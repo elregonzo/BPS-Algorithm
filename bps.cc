@@ -1,211 +1,18 @@
 #include <iostream>
+#include <stdarg.h>
+#include <obstack.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <gmp.h>
+#include <gmpxx.h>
 #include <vector>
-#include <cmath>
+
 #define TWEAK_BASE 2LL
 #define TWEAK_LEFT_LENGTH 32LL
 
 using namespace std;
 
-struct bignum{
-	int len;
-	int64 data[bignumlen];
-	int64 &operator [](int x){ return(data[x]);}
-	const int64 &operator [](int x)const { return(data[x]);}
-	bignum (){
-		memset(data,0,sizeof(data));
-		len=0;
-	}
-	void clear(){
-		for(int i=len;i>=1;--i)data[i]=0;
-		len=0;
-	}
-	int check (const bignum &a,const bignum &b){
-		if(a.len>b.len)return(0);
-		if(b.len>a.len)return(1);
-		for(int i=a.len;i>=1;--i){
-			if(a.data[i]<b.data[i])return(1);
-			if(b.data[i]<a.data[i])return(0);
-		}
-		return 2;
-	}
-	bool operator < (const bignum &b){ return(check(*this,b)==1);}
-	bool operator > (const bignum &b){ return(check(*this,b)==0);}
-	bool operator <=(const bignum &b){ return(check(*this,b)>=1);}
-	bool operator >=(const bignum &b){ return(check(*this,b)%2==0);}
-	bool operator !=(const bignum &b){ return(check(*this,b)!=2);}
-	bool operator ==(const bignum &b){ return(check(*this,b)==2);}
-
-	bignum operator=(const bignum &x){
-		for(int i=x.len+1;i<=len;++i)data[i]=0;
-		for(int i=1;i<=x.len;++i)data[i]=x.data[i];
-		len=x.len;
-		return *this;
-	}
-	bignum operator=(int64 x){
-		for(int i=len;i>=0;--i)data[i]=0;
-		len=0;
-		while(x){
-			data[++len]=x%base;
-			x/=base;
-		}
-		return *this;
-	}
-	bignum(int64 x){
-		memset(data,0,sizeof(data));
-		len=0;
-		(*this)=x;
-	}
-	bignum operator *(const bignum &b){
-		int i,j;
-		bignum tmp;
-		for(i=1;i<=len;++i)if(data[i]!=0)
-			for(j=1;j<=b.len;++j)if(b.data[j]!=0){
-				tmp.data[i+j-1]+=data[i]*b.data[j];
-				tmp.data[i+j]+=tmp.data[i+j-1]/base;
-				tmp.data[i+j-1]%=base;
-			}
-		tmp.len=len+b.len-1;
-		while(tmp.data[tmp.len+1])tmp.len++;
-		return tmp;
-	}
-	bignum operator *(int64 x){
-		int i;
-		bignum tmp;
-		for(i=1;i<=len;++i)tmp[i]=data[i]*x;
-		tmp.len=len;
-		for(i=1;i<=len;++i){
-			tmp[i+1]+=tmp[i]/base,tmp[i]%=base;
-			if(tmp[i+1]&&i+1>tmp.len)tmp.len++;
-		}
-		return tmp;
-	}
-	bignum operator /(int64 x){
-		int i;
-		bignum tmp;
-		int64 y=0;
-		for(i=len;i>=1;--i){
-			y=y*base+data[i];
-			tmp[i]=y/x;
-			y%=x;
-		}
-		tmp.len=len;
-		while(tmp[tmp.len]==0&&tmp.len>1)tmp.len--;
-		return tmp;
-	}
-	bignum operator /(const bignum &b){
-		if(b.len<=1 && b[1]==0){
-			printf("error! 被0除!");
-			for(;;);
-		}
-		int i,l1=(len-1)*Blen,l2=(b.len-1)*Blen;
-		int64 x=data[len],y=b[b.len];
-		while(x)x/=10,l1++;
-		while(y)y/=10,l2++;
-		bignum tmp,chu,B;
-		chu=*this; B=b;
-
-		for(i=1;i*Blen<=l1-l2;++i)B*=base;
-		for(i=1;i<=(l1-l2)%Blen;++i)B*=10;
-		for(i=l1-l2;i>=0;--i){
-			x=0;
-			while(chu>=B)chu-=B,x++;
-			tmp[i/Blen+1]=tmp[i/Blen+1]*10+x;
-			B/=10;
-		}
-		tmp.len=(l1-l2)/Blen+1;
-		while(tmp.len>=1 && !tmp[tmp.len])tmp.len--;
-		return tmp;
-	}
-	bignum operator +(const bignum &b){
-		bignum tmp;
-		int i,l=max(len,b.len);
-		for(i=1;i<=l;++i)tmp[i]=data[i]+b[i];
-		for(i=1;i<=l;++i)tmp[i+1]+=tmp[i]/base,tmp[i]%=base;
-		tmp.len=l;
-		if(tmp[tmp.len+1])tmp.len++;
-		return tmp;
-	}
-	bignum operator +(int64 x){
-		bignum tmp; tmp=*this;
-		tmp[1]+=x;
-		for(int i=1;i<=len&&tmp[i]>=base;++i)tmp[i+1]+=tmp[i]/base,tmp[i]%=base;
-		while(tmp[tmp.len+1])tmp.len++;
-		return tmp;
-	}
-	bignum operator -(const bignum &b){
-		int i;
-		bignum tmp;
-		for(i=1;i<=len;++i)tmp.data[i]=data[i]-b.data[i];
-		for(i=1;i<=len;++i){
-			if(tmp[i]<0)tmp.data[i]+=base,tmp.data[i+1]--;
-		}
-		tmp.len=len;
-		while(tmp[tmp.len]==0&&tmp.len>1)tmp.len--;
-		return tmp;
-	}
-	bignum operator -(int64 x){
-		bignum tmp; tmp=*this;
-		tmp[1]-=x;
-		for(int i=1;i<=len&&tmp[i]<0;++i){
-			tmp[i+1]+=(tmp[i]+1)/base-1;
-			tmp[i]=(tmp[i]+1)%base+base-1;
-		}
-		while(!tmp[tmp.len]&&tmp.len>1)tmp.len--;
-		return tmp;
-	}
-	int64 operator %(int64 x){
-		int i;
-		int64 y=0;
-		for(i=len;i>=1;--i)y=(y*base+data[i])%x;
-		return y;
-	}
-	bignum operator %(const bignum &b){
-		if(b.len<=1 && b[1]==0){
-			printf("error! 被0 mod!");
-			for(;;);
-		}
-		int i,l1=(len-1)*Blen,l2=(b.len-1)*Blen;
-		int64 x=data[len],y=b[b.len];
-		while(x)x/=10,l1++;
-		while(y)y/=10,l2++;
-		bignum chu,B;
-		chu=*this; B=b;
-
-		for(i=1;i*Blen<=l1-l2;++i)B*=base;
-		for(i=1;i<=(l1-l2)%Blen;++i)B*=10;
-		for(i=l1-l2;i>=0;--i){
-			while(chu>=B)chu-=B;
-			B/=10;
-		}
-		return chu;
-	}
-
-	bignum operator +=(const bignum &b){return *this=(*this+b);}
-	bignum operator *=(const bignum &b){return *this=(*this*b);}
-	bignum operator -=(const bignum &b){return *this=(*this -b);}
-	bignum operator /=(const bignum &b){return *this=(*this/b);}
-	bignum operator %=(const bignum &b){return *this=(*this%b);}
-	bignum operator *=(int64 x) {return( *this=(*this *x));}
-	bignum operator +=(int64 x) {return( *this=(*this +x));}
-	bignum operator -=(int64 x) {return( *this=(*this -x));}
-	bignum operator /=(int64 x) {return( *this=(*this /x));}
-	void read(){
-		char c[bignumlen*Blen+10];
-		scanf("%s",c+1);
-		int l=strlen(c+1);
-		(*this).clear();
-		int64 x;
-		for(int i=1;i<=(l-1)/Blen+1;++i){
-			x=0;
-			for(int j=l-Blen*i+1;j<=l-Blen*i+Blen;++j)if(j>=1)x=x*10+c[j]-48;
-			data[++len]=x;
-		}
-	}
-	void write(){
-		printf("%I64d",data[len]);
-		for(int i=len-1;i>=1;--i)printf("%0*I64d",Blen,data[i]);
-	}
-};
 
 
 long long square_and_multiply(long long a, long long b){
@@ -230,40 +37,108 @@ long long square_and_multiply(long long a, long long b){
     K: The key to be used in the F function
     T: Tweak to be used in the F function
 */
-vector<long long> InternalBlockCipher(/*TODO: research how to insert a function here*/long long s, long long b
-                        , long long w, vector<long long> X, vector<long long> K, unsigned long long T){
+vector<long long> InternalBlockCipher(/*TODO: research how to insert a function here*/int s, int b
+                        , int w, vector<int> X, vector<int> K, unsigned long long T){
 
-    long long Tr = T % square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH);
+    long long Tr = T % square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH );
 
     long long Tl = (T - Tr) / square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH);
 
     long long l = ceil(b/2.0), r = floor( b/2.0 );
 
-    vector< bignum > L( w + 1 ,0) , R( w + 1 ,0), Y(b) ;
-    for (int i = 0 ; i < l ; i++ )
-        L[0] += X[i] * square_and_multiply( s , i );
-    for (int i = 0 ; i < r ; i++ )
-        R[0] += X[i+l] * square_and_multiply( s , i );
+    //Declare the BigIntegers to be used in each round 
+    vector< mpz_t  > L( w + 1 ) , R( w + 1 ) ;
 
+    //Initialize the BigIntegers nums
+    for (int i = 0 ; i < w + 1 ; i++ )
+    	mpz_inits( L[i] , R[i] , NULL );
+
+    vector<long long> Y(b);
+
+    //Transforms left branch from s base to decimal base
+    for (int i = 0 ; i < l ; i++ ){
+    	mpz_t exponentation;
+    	mpz_init(exponentation); 
+    	mpz_ui_pow_ui (exponentation, (unsigned long int) s , (unsigned long int) i );
+    	mpz_addmul_ui (L[0], exponentation, (unsigned long int) X[i]);
+    	mpz_clear(exponentation);
+    }
+    //Transforms right branch from s-base to decimal base
+    for (int i = 0 ; i < r ; i++ ){
+    	mpz_t exponentation;
+    	mpz_init(exponentation); 
+    	mpz_ui_pow_ui (exponentation, (unsigned long int) s , (unsigned long int) i );
+    	mpz_addmul_ui (R[0], exponentation, (unsigned long int) X[i+l]);
+    	mpz_clear(exponentation);
+    }
+    //Applies the w rounds over the two branches
     for (int i = 0; i <= w - 1 ; i++ ){
+    	mpz_t exponentation1, exponentation2,sum2,sum1, multiplication1;
+    	mpz_inits(exponentation1, exponentation2,sum2,sum1,multiplication1, NULL);
+
         if ( i % 2 == 0 ) {
+
+        	mpz_ui_pow_ui (exponentation1, (unsigned long int) 2 , (unsigned long int) (f-32) );
+    		mpz_ui_pow_ui (exponentation2, (unsigned long int) s , (unsigned long int) l );
+    		mpz_mul_ui (multiplication1, exponentation1, (unsigned long int) (Tr ^ i) );
+    		mpz_add ( sum1, multiplication1 , R[i] );
+    		mpz_add ( sum2, L[i] , FK(sum1) );
+    		mpz_mod (L[i+1], sum2, exponentation2);
+    		mpz_set (R[i+1], R[i] );
+            /*
+            These lines are leaved commented for more clarity while the code is debugged
             L[i+1] = ( L[i] + FK((Tr ^ i)* square_and_multiply( 2 , f-32 ) + R[i]) ) % square_and_multiply( s , l );
-            R[i+1] = R[i];
+            R[i+1] = R[i];*/
         }
         else{
+        	mpz_ui_pow_ui (exponentation1, (unsigned long int) 2 , (unsigned long int) (f-32) );
+    		mpz_ui_pow_ui (exponentation2, (unsigned long int) s , (unsigned long int) r );
+    		mpz_mul_ui (multiplication1, exponentation1, (unsigned long int) (Tl ^ i) );
+    		mpz_add ( sum1, multiplication1 , L[i] );
+    		mpz_add ( sum2, R[i] , FK(sum1) );
+    		mpz_mod (R[i+1], sum2, exponentation2);
+    		mpz_set (L[i+1], L[i] );
+    		/* These lines are leaved commented for more clarity while the code is debugged
             R[i+1] = ( R[i] + FK((Tl ^ i)* square_and_multiply( 2 , f-32 ) + L[i]) ) % square_and_multiply( s , r );
-            L[i+1] = L[i];
+            L[i+1] = L[i]; */
         }
+        mpz_clears(exponentation1, exponentation2,sum2,sum1,multiplication1, NULL);
 
     }
+    //Transforms back to the s-base 
     for (int i = 0 ; i <= l - 1 ; i ++  ){
+    	mpz_t residue,intermediate;
+    	mpz_inits(residue,intermediate, NULL);
+    	mpz_mod_ui (residue, L[w], (unsigned long int) s);
+    	Y[i] = mpz_get_si (residue);
+    	
+    	//TODO: I'm thinking is enough an exact division
+    	mpz_sub (intermediate, L[w], residue);
+    	mpz_cdiv_q_ui  (L[w], intermediate, (unsigned long int) s);
+    	/* These lines are leaved commented for more clarity while the code is debugged
         Y[i] = L[w] % s;
         L[w] = ( L[w] - Y[i] ) / s;
+        */
+        mpz_clears(residue,intermediate, NULL);
     }
     for (int i = 0 ; i <= r - 1 ; i ++  ){
+    	mpz_t residue,intermediate;
+    	mpz_inits(residue,intermediate, NULL);
+    	mpz_mod_ui (residue, R[w], (unsigned long int) s);
+    	Y[i + l] = mpz_get_si (residue);
+    	
+    	//TODO: I'm thinking is enough an exact division
+    	mpz_sub (intermediate, R[w], residue);
+    	mpz_cdiv_q_ui  (R[w], intermediate, (unsigned long int) s);
+    	/* These lines are leaved commented for more clarity while the code is debugged
         Y[ i + l ] = R[w] % s;
         R[w] = ( R[w] - Y[ i + l ] ) / s;
+        */
+        mpz_clears(residue,intermediate, NULL);
+        
     }
+    for (int i = 0 ; i < w + 1 ; i++ )
+    	mpz_clears( L[i] , R[i] , NULL );
     return Y ;
 }
 
@@ -276,7 +151,7 @@ vector<long long> InternalBlockCipher(/*TODO: research how to insert a function 
     K: The key to be used in the F function
     T: Tweak to be used in the F function
 */
-vector<long long> InternalBlockCipher(/*TODO: research how to insert a function here*/long long s, long long b
+vector<long long> InternalBlockDecipher(/*TODO: research how to insert a function here*/long long s, long long b
                         , long long w, vector<long long> X, vector<long long> K, unsigned long long T){
 
     long long Tr = T % square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH);
