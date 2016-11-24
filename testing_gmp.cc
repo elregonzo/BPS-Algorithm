@@ -7,11 +7,15 @@
 #include <iostream>
 #include <gmp.h>
 #include <gmpxx.h>
+#include <vector>
 
 
 using namespace std;
 
 int main(void) {
+  mpz_t  testing[10] ;
+  for (int i = 0 ; i < 10 ; i++ )
+      mpz_init( testing[i]  );
   mpz_t result, base;
   mpz_inits(result,base,NULL);
   mpz_set_str(base, "2", 10);
