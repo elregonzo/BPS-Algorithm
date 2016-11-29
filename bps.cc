@@ -8,6 +8,7 @@
 #include <gmpxx.h>
 #include <vector>
 #include <stdint.h>
+#include <algorithm>
 #include "tiny-AES128-C/aes.c"
 
 #define TWEAK_BASE 2LL
@@ -41,20 +42,23 @@ long long square_and_multiply(long long a, long long b){
 }
 
 
-void encrypt_aes( mpz_t ciphertext  , const mpz_t message, const vector<int> K )
+void encrypt_aes( mpz_t ciphertext  , const mpz_t message, const int K[] )
 {
     // Example of more verbose verification
 
-    uint8_t i, buf[16];
+    uint8_t buf[16];
     uint8_t key[16];
     uint8_t plain_text[64];
     mpz_t q, r, temp ;
     mpz_inits( q , r , temp , NULL);
-    for (int i = 0 ; i < (int) K.size() ; i++ ){
-    	key[i] = (uint8_t) K[i];
-    }
+
+    for(int i = 0; i < 16; i++){
+		key[i] = (uint8_t) K[i];
+	}
+    
+    
     mpz_set( temp, message );
-    for (int i = 0 ; i < 16 ; i++ ){
+    for (int i = 15 ; i >= 0 ; i-- ){
     	mpz_fdiv_qr_ui ( q , r , temp, (unsigned long int) 256) ;
     	mpz_set (temp, q );
     	plain_text[i] = (uint8_t) mpz_get_ui (r);
@@ -108,14 +112,22 @@ void encrypt_aes( mpz_t ciphertext  , const mpz_t message, const vector<int> K )
     K: The key to be used in the F function
     T: Tweak to be used in the F function
 */
-vector<long long> InternalBlockCipher(/*TODO: research how to insert a function here*/int s, int b
-                        , int w, vector<int> X, vector<int> K, unsigned long long T){
+vector<int> InternalBlockCipher(/*TODO: research how to insert a function here*/int s, int b
+                        , int w, int X[], int K[], unsigned long long T){
 
     long long Tr = T % square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH );
 
     long long Tl = (T - Tr) / square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH);
 
+    cout<<"Tl: "<<Tl<<endl;  
+    cout<<"Tr: "<<Tr<<endl;  
+      
+
+
     long long l = ceil(b/2.0), r = floor( b/2.0 );
+
+    cout<<"l: "<<l<<endl;
+    cout<<"r: "<<r<<endl;
 
     //Declare the BigIntegers to be used in each round 
     mpz_t  *L = new mpz_t[ w + 1 ]; 
@@ -126,9 +138,9 @@ vector<long long> InternalBlockCipher(/*TODO: research how to insert a function 
     for (int i = 0 ; i < w + 1 ; i++ )
     	mpz_inits( L[i] , R[i] , NULL );
 
-    vector<long long> Y(b);
+    vector<int> Y(b);
 
-    //Transforms left branch from s base to decimal base
+    //Transforms left branch from s-base to decimal base
     for (int i = 0 ; i < l ; i++ ){
     	mpz_t exponentation;
     	mpz_init(exponentation); 
@@ -136,6 +148,9 @@ vector<long long> InternalBlockCipher(/*TODO: research how to insert a function 
     	mpz_addmul_ui (L[0], exponentation, (unsigned long int) X[i]);
     	mpz_clear(exponentation);
     }
+    cout<<"Left Branch initial: ";
+    mpz_out_str(stdout, 10, L[0]);
+    cout<<endl;
     //Transforms right branch from s-base to decimal base
     for (int i = 0 ; i < r ; i++ ){
     	mpz_t exponentation;
@@ -144,19 +159,28 @@ vector<long long> InternalBlockCipher(/*TODO: research how to insert a function 
     	mpz_addmul_ui (R[0], exponentation, (unsigned long int) X[i+l]);
     	mpz_clear(exponentation);
     }
+    cout<<"Right Branch initial: ";
+    mpz_out_str(stdout, 10, R[0]);
+    cout<<endl;
     //Applies the w rounds over the two branches
     for (int i = 0; i <= w - 1 ; i++ ){
     	mpz_t exponentation1, exponentation2,sum2,sum1, multiplication1,ciphertext;
     	mpz_inits(exponentation1, exponentation2,sum2,sum1,multiplication1,ciphertext, NULL);
-
+        cout<<"After round "<<i<<":"<<endl;
         if ( i % 2 == 0 ) {
 
         	mpz_ui_pow_ui (exponentation1, (unsigned long int) 2 , (unsigned long int) (F-32) );
     		mpz_ui_pow_ui (exponentation2, (unsigned long int) s , (unsigned long int) l );
     		mpz_mul_ui (multiplication1, exponentation1, (unsigned long int) (Tr ^ i) );
     		mpz_add ( sum1, multiplication1 , R[i] );
+            cout<<"Binary Before encrypt: "<<endl;
+            mpz_out_str(stdout, 2, sum1);
+            cout<<endl<<"Before encrypt: "<<sum1<<endl;
     		encrypt_aes( ciphertext, sum1 , K );
+            cout<<"After encrypt "<<ciphertext<<endl;
+            cout<<"exponentation2 "<<exponentation2<<endl;
     		mpz_add ( sum2, L[i] , ciphertext );
+            cout<<"After sum2 "<<sum2<<endl;
     		mpz_mod (L[i+1], sum2, exponentation2);
     		mpz_set (R[i+1], R[i] );
             /*
@@ -169,7 +193,11 @@ vector<long long> InternalBlockCipher(/*TODO: research how to insert a function 
     		mpz_ui_pow_ui (exponentation2, (unsigned long int) s , (unsigned long int) r );
     		mpz_mul_ui (multiplication1, exponentation1, (unsigned long int) (Tl ^ i) );
     		mpz_add ( sum1, multiplication1 , L[i] );
+            cout<<"Binary Before encrypt: "<<endl;
+            mpz_out_str(stdout, 2, sum1);
+            cout<<endl<<"Before encrypt: "<<sum1<<endl;
     		encrypt_aes( ciphertext, sum1 , K );
+            cout<<"After encrypt "<<ciphertext<<endl;
     		mpz_add ( sum2, R[i] , ciphertext );
     		mpz_mod (R[i+1], sum2, exponentation2);
     		mpz_set (L[i+1], L[i] );
@@ -178,7 +206,8 @@ vector<long long> InternalBlockCipher(/*TODO: research how to insert a function 
             L[i+1] = L[i]; */
         }
         mpz_clears(exponentation1, exponentation2,sum2,sum1,multiplication1,ciphertext, NULL);
-
+        cout << "L["<<i+1<<"] = " << L[i+1]<<endl;
+        cout << "R["<<i+1<<"] = " << R[i+1]<<endl;
     }
     //Transforms back to the s-base 
     for (int i = 0 ; i <= l - 1 ; i ++  ){
@@ -226,47 +255,154 @@ vector<long long> InternalBlockCipher(/*TODO: research how to insert a function 
     K: The key to be used in the F function
     T: Tweak to be used in the F function
 */
-vector<long long> InternalBlockDecipher(/*TODO: research how to insert a function here*/long long s, long long b
-                        , long long w, vector<long long> X, vector<long long> K, unsigned long long T){
+vector<int> InternalBlockDecipher(/*TODO: research how to insert a function here*/int s, int b
+                        , int w, int X[], int K[], unsigned long long T){
 
-    long long Tr = T % square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH);
-
+    long long Tr = T % square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH );
     long long Tl = (T - Tr) / square_and_multiply( TWEAK_BASE , TWEAK_LEFT_LENGTH);
+
+    cout<<"Tl: "<<Tl<<endl;  
+    cout<<"Tr: "<<Tr<<endl;  
 
     long long l = ceil(b/2.0), r = floor( b/2.0 );
 
-    vector< long long > L( w + 1 ,0) , R( w + 1 ,0), Y(b) ;
-    for (int i = 0 ; i < l ; i++ )
-        L[w] += X[i] * square_and_multiply( s , i );
-    for (int i = 0 ; i < r ; i++ )
-        R[w] += X[i+l] * square_and_multiply( s , i );
+    cout<<"l: "<<l<<endl;
+    cout<<"r: "<<r<<endl;
 
+    //Declare the BigIntegers to be used in each round 
+    mpz_t  *L = new mpz_t[ w + 1 ]; 
+    mpz_t  *R = new mpz_t[ w + 1 ]; 
+    
+
+    //Initialize the BigIntegers nums
+    for (int i = 0 ; i < w + 1 ; i++ )
+        mpz_inits( L[i] , R[i] , NULL );
+
+    vector<int> Y(b);
+
+    //Transforms left branch from s-base to decimal base
+    for (int i = 0 ; i < l ; i++ ){
+        mpz_t exponentation;
+        mpz_init(exponentation); 
+        mpz_ui_pow_ui (exponentation, (unsigned long int) s , (unsigned long int) i );
+        mpz_addmul_ui (L[w], exponentation, (unsigned long int) X[i]);
+        mpz_clear(exponentation);
+    }
+    cout<<"Left Branch initial: ";
+    mpz_out_str(stdout, 10, L[0]);
+    cout<<endl;
+    //Transforms right branch from s-base to decimal base
+    for (int i = 0 ; i < r ; i++ ){
+        mpz_t exponentation;
+        mpz_init(exponentation); 
+        mpz_ui_pow_ui (exponentation, (unsigned long int) s , (unsigned long int) i );
+        mpz_addmul_ui (R[w], exponentation, (unsigned long int) X[i+l]);
+        mpz_clear(exponentation);
+    }
+    cout<<"Right Branch initial: ";
+    mpz_out_str(stdout, 10, R[0]);
+    cout<<endl;
+    //Applies the w rounds over the two branches
     for (int i = w-1; i >= 0 ; i-- ){
+        mpz_t exponentation1, exponentation2,sum2,sum1, multiplication1,ciphertext;
+        mpz_inits(exponentation1, exponentation2,sum2,sum1,multiplication1,ciphertext, NULL);
+        cout<<"After round "<<i<<":"<<endl;
         if ( i % 2 == 0 ) {
-//            L[i] = ( L[i+1] - FK((Tr ^ i)* square_and_multiply( 2 , F-32 ) + R[i+1]) ) % square_and_multiply( s , l );
-            R[i] = R[i+1];
+            mpz_ui_pow_ui (exponentation1, (unsigned long int) 2 , (unsigned long int) (F-32) );
+            mpz_ui_pow_ui (exponentation2, (unsigned long int) s , (unsigned long int) l );
+            mpz_mul_ui (multiplication1, exponentation1, (unsigned long int) (Tr ^ i) );
+            mpz_add ( sum1, multiplication1 , R[i+1] );
+            cout<<"Binary Before encrypt: "<<endl;
+            mpz_out_str(stdout, 2, sum1);
+            cout<<endl<<"Before encrypt: "<<sum1<<endl;
+            encrypt_aes( ciphertext, sum1 , K );
+            cout<<"After encrypt "<<ciphertext<<endl;
+            cout<<"exponentation2 "<<exponentation2<<endl;
+            mpz_sub ( sum2, L[i+1] , ciphertext );
+            cout<<"After sum2 "<<sum2<<endl;
+            mpz_mod (L[i], sum2, exponentation2);
+            mpz_set (R[i], R[i+1] );
+            /*
+            These lines are leaved commented for more clarity while the code is debugged
+            L[i+1] = ( L[i] + FK((Tr ^ i)* square_and_multiply( 2 , f-32 ) + R[i]) ) % square_and_multiply( s , l );
+            R[i+1] = R[i];*/
         }
         else{
-//            R[i] = ( R[i+1] - FK((Tl ^ i)* square_and_multiply( 2 , F-32 ) + L[i+1]) ) % square_and_multiply( s , r );
-            L[i] = L[i+1];
+            mpz_ui_pow_ui (exponentation1, (unsigned long int) 2 , (unsigned long int) (F-32) );
+            mpz_ui_pow_ui (exponentation2, (unsigned long int) s , (unsigned long int) r );
+            mpz_mul_ui (multiplication1, exponentation1, (unsigned long int) (Tl ^ i) );
+            mpz_add ( sum1, multiplication1 , L[i+1] );
+            cout<<"Binary Before encrypt: "<<endl;
+            mpz_out_str(stdout, 2, sum1);
+            cout<<endl<<"Before encrypt: "<<sum1<<endl;
+            encrypt_aes( ciphertext, sum1 , K );
+            cout<<"After encrypt "<<ciphertext<<endl;
+            mpz_sub ( sum2, R[i+1] , ciphertext );
+            mpz_mod (R[i], sum2, exponentation2);
+            mpz_set (L[i], L[i+1] );
+            /* These lines are leaved commented for more clarity while the code is debugged
+            R[i+1] = ( R[i] + FK((Tl ^ i)* square_and_multiply( 2 , f-32 ) + L[i]) ) % square_and_multiply( s , r );
+            L[i+1] = L[i]; */
         }
-
+        mpz_clears(exponentation1, exponentation2,sum2,sum1,multiplication1,ciphertext, NULL);
+        cout << "L["<<i<<"] = " << L[i]<<endl;
+        cout << "R["<<i<<"] = " << R[i]<<endl;
     }
+    //Transforms back to the s-base 
     for (int i = 0 ; i <= l - 1 ; i ++  ){
+        mpz_t residue,intermediate;
+        mpz_inits(residue,intermediate, NULL);
+        mpz_mod_ui (residue, L[0], (unsigned long int) s);
+        Y[i] = mpz_get_si (residue);
+        
+        //TODO: I'm thinking is enough an exact division
+        mpz_sub (intermediate, L[0], residue);
+        mpz_cdiv_q_ui  (L[0], intermediate, (unsigned long int) s);
+        /* These lines are leaved commented for more clarity while the code is debugged
         Y[i] = L[w] % s;
         L[w] = ( L[w] - Y[i] ) / s;
+        */
+        mpz_clears(residue,intermediate, NULL);
     }
     for (int i = 0 ; i <= r - 1 ; i ++  ){
+        mpz_t residue,intermediate;
+        mpz_inits(residue,intermediate, NULL);
+        mpz_mod_ui (residue, R[0], (unsigned long int) s);
+        Y[i + l] = mpz_get_si (residue);
+        
+        //TODO: I'm thinking is enough an exact division
+        mpz_sub (intermediate, R[0], residue);
+        mpz_cdiv_q_ui  (R[0], intermediate, (unsigned long int) s);
+        /* These lines are leaved commented for more clarity while the code is debugged
         Y[ i + l ] = R[w] % s;
         R[w] = ( R[w] - Y[ i + l ] ) / s;
+        */
+        mpz_clears(residue,intermediate, NULL);
+        
     }
+    for (int i = 0 ; i < w + 1 ; i++ )
+        mpz_clears( L[i] , R[i] , NULL );
     return Y ;
-
 }
 
 
 
 int main(){
+	int K[16] = { 0x2b,  0x7e,  0x15,  0x16,  0x28,  0xae,  0xd2,  0xa6,  0xab,  0xf7,  0x15,  
+					0x88,  0x09,  0xcf,  0x4f,  0x3c };
+	int X[16] = {4,1,0,8,6,3,7,5,5,1,8,5,4,3,0,2};
+	int f = 128, s = 10 , b = 16 , w = 8 ;
+	unsigned long long T = 16709593176613536075LL;
 
+	vector<int> ciphertext =  InternalBlockCipher(s, b, w, X, K, T);
+	cout << "The ciphertext is : "; 
+	for (int i = 0; i < (int) ciphertext.size() ; ++i){
+		cout << ciphertext[i] << " ";
+	}
+    vector<int> plaintext =  InternalBlockDecipher(s, b, w, &ciphertext[0], K, T);
+    cout << "The plaintext is : "; 
+    for (int i = 0; i < (int) plaintext.size() ; ++i){
+        cout << plaintext[i] << " ";
+    }
     return 0;
 }
